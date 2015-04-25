@@ -1,9 +1,6 @@
 package com.csc573.p2pci;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -11,16 +8,11 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
 
 import sun.net.ConnectionResetException;
-
-import com.sun.org.apache.xalan.internal.xsltc.compiler.sym;
-import com.sun.xml.internal.ws.handler.ClientSOAPHandlerTube;
 public class BootStrapServer{
 	
-	private static final ArrayList<String> rfcList = new ArrayList<String>();
+	private static ArrayList<String> rfcList = new ArrayList<String>();
 	private static final String SP = " ";
 	private static final String END = "\n";
 	private static final String VERSION = "P2P-CI/1.0";
@@ -64,8 +56,12 @@ public class BootStrapServer{
 		{
 			this.clientSocket = clientSocket;
 			synchronized (connectedClients) {
-				if(!connectedClients.contains(clientSocket.getInetAddress().getHostName())){
-					connectedClients.add(clientSocket.getInetAddress().getHostName());
+				String connectedClientAddress = clientSocket.getInetAddress().getHostName();
+				System.out.println("Accepted connection request from: "+connectedClientAddress);
+				if(!connectedClients.contains(connectedClientAddress)){
+					
+					
+					connectedClients.add(connectedClientAddress);
 				}
 			}
 		}
@@ -164,7 +160,6 @@ public class BootStrapServer{
 		}
 		private void provideRfcList(String[] decodedMessage)
 		{
-			int i=0;
 			String peer="";
 			synchronized (rfcList){
 				
@@ -187,12 +182,11 @@ public class BootStrapServer{
 				}
 				
 			}
-			System.out.println(rfcList);
+			//System.out.println(rfcList);
 			messageToClient(RESULT_OK, newRfc);
 		}
 		private void findPeerForRfc(String[] decodedMessage)
 		{
-			int i=0;
 			String peer=null;
 			synchronized (rfcList){
 				
@@ -223,27 +217,29 @@ public class BootStrapServer{
 		private void closeConnection()
 		{
 			String hostName=clientSocket.getInetAddress().getHostName();
+			String hostIP = clientSocket.getInetAddress().getHostAddress();
 			synchronized (connectedClients) {
 				connectedClients.remove(hostName);
 				
 			}
 			synchronized (rfcList) {
-				ArrayList<Integer> indices = new ArrayList<Integer>();
+				ArrayList<String> newRfcList = new ArrayList<String>();
 				for(int i=0; i<rfcList.size();i++)
 				{
-					if(rfcList.get(i).contains(hostName))
+					
+					String rfcEntry=rfcList.get(i);
+					if(rfcEntry.contains(hostIP))
 					{
-						indices.add(i);
+						continue;
 					}
+					newRfcList.add(rfcEntry);
+					
 				}
-				for(Integer index: indices)
-				{
-					rfcList.remove(index);
-				}
+				rfcList=newRfcList;
 				
 			}
-			System.out.println("Closed connection with "+hostName);
-			System.out.println(rfcList+" "+connectedClients);
+			System.out.println("Closed connection with "+hostIP);
+			//System.out.println(rfcList+" "+connectedClients);
 		}
 	}
 	private void initServer() {

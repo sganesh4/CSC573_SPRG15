@@ -8,8 +8,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.net.ConnectException;
+import java.net.Inet4Address;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.Date;
 import java.util.Arrays;
@@ -24,34 +27,49 @@ public class P2PClient {
 	private BufferedReader in = null;
 	private PrintWriter out = null;
 	private int listenPort;
-	private final String hostname;
+	private String hostname;
 	private Socket p2pClientSocket;
 	private static final int ALL_RFC = 0, SINGLE_RFC = 1;
 	private HashMap < String, String > myRfcList;
-	private static final int BOOTSTRAP_SERVER_PORT = 7734;
+	private int BOOTSTRAP_SERVER_PORT;
 	private final String rfcPath = ".//RFCs";
 	private static boolean isKeepAlive = true;
+	private String serverIP;
+	private Thread peerListenerThread;
+	private PeerListener pl;
 	private static final String RESULT_OK = "200 OK",
 			NOT_FOUND = "404 Not Found", BAD_REQUEST = "400 Bad Request",
 			UNSUPPORTED_VERSION = "505 P2P-CI Version Not Supported";
 
-	public P2PClient() {
-
+	public P2PClient(String serverIP, String serverPort, String listenPort) {
+		this.serverIP = serverIP;
+		this.BOOTSTRAP_SERVER_PORT = Integer.parseInt(serverPort);
+		this.listenPort = Integer.parseInt(listenPort);
 		try {
-			p2pClientSocket = new Socket("127.0.0.1", BOOTSTRAP_SERVER_PORT); 
+			this.hostname = Inet4Address.getLocalHost().getHostAddress();
+		} catch (UnknownHostException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		try {
+			
+			p2pClientSocket = new Socket(this.serverIP, BOOTSTRAP_SERVER_PORT); 
 			in = new BufferedReader(new InputStreamReader(
 			p2pClientSocket.getInputStream()));
 			out = new PrintWriter(new OutputStreamWriter(
 			p2pClientSocket.getOutputStream()));
 			initRfcCollection();
-		} catch (IOException e1) {
+		}catch(ConnectException connectException){
+			System.out.println("Connection To Host Refused. Check if Server is running");
+			System.exit(-2);
+		} 
+		catch (IOException e1) {
 			e1.printStackTrace();
 		}
-		hostname = "127.0.0.1";
-		listenPort = 7714;
-		PeerListener pl = new PeerListener(listenPort);
-		Thread t = new Thread(pl);
-		t.start();
+		
+		this.pl = new PeerListener(this.listenPort);
+		peerListenerThread = new Thread(pl);
+		peerListenerThread.start();
 	}
 
 	private void initRfcCollection() throws IOException {
@@ -69,7 +87,12 @@ public class P2PClient {
 				while ((line = reader.readLine()) != null) {
 					line = line.trim();
 					if (line.length() > 0) {
-						rfcTitle = line.split("Title: ")[1];
+						String[] titleLine = line.split("Title: ");
+						if(titleLine.length>1)
+						{
+							rfcTitle = titleLine[1];
+							break;
+						}
 					}
 				}
 				myRfcList.put(rfcNum, rfcTitle);
@@ -80,9 +103,21 @@ public class P2PClient {
 
 	public static void main(String[] args) throws IOException {
 		boolean isClentActive = true;
+		if(args.length!=3)
+		{
+			System.out.println("Please invoke the program with the following arguments");
+			System.out.println("P2PClient <Server IP> <Server Port> <Listen Port>");
+			System.exit(-1);
+		}
 		BufferedReader br = new BufferedReader(new InputStreamReader(System. in ));
-		P2PClient p = new P2PClient();
+		
+		String serverIP = args[0];
+		String serverPort = args[1];
+		String listenPort =args[2];
+		P2PClient p = new P2PClient(serverIP, serverPort, listenPort);
 		while (isClentActive) {
+			//System.out.print("\033[H\033[2J");
+			//System.out.flush();
 			System.out.println("MENU\n---------");
 			System.out.println("1. Get RFC List from Server");
 			System.out.println("2. Add my RFCs to Server Index");
@@ -159,6 +194,14 @@ public class P2PClient {
 		String request = "quit" + END + END_MESSAGE + END;
 		sendRequestToServer(request);
 		isKeepAlive = false;
+		try {
+			this.pl.peerListenerSocket.close();
+			this.p2pClientSocket.close();
+			//peerListenerThread.interrupt();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 
 	private void getRfcFromPeer() throws IOException {
@@ -177,7 +220,7 @@ public class P2PClient {
 	private class PeerListener implements Runnable {
 		
 		private ServerSocket peerListenerSocket;
-
+		
 		public PeerListener(int listenPort) {
 			try {
 				peerListenerSocket = new ServerSocket(listenPort);
@@ -191,15 +234,19 @@ public class P2PClient {
 		@Override
 		public void run() {
 			while (isKeepAlive) {
-				System.err.println("P2P Client is now ready to serve other peers");
+				System.out.println("P2P Client is now ready to serve other peers");
 				try {
 					Socket peerClientSocket = peerListenerSocket.accept();
 					RFCUploader rfcUploader = new RFCUploader(peerClientSocket);
 					(new Thread(rfcUploader)).start();
-				} catch (IOException e) {
+				} catch(SocketException socketException){
+					System.out.println("The client has been disconnected from the network");
+				}
+				catch (IOException e) {
 					e.printStackTrace();
 				}
 			}
+			//System.out.println("Connection Closed");
 		}
 	}
 
@@ -315,7 +362,11 @@ public class P2PClient {
 			try {
 				this.peerClientSocket = new Socket(address, port);
 				this.rfcId = rfcId;
-			} catch (UnknownHostException e) {
+			} catch(ConnectException connectException){
+				System.out.println("Connection To Peer Refused. Check if Peer is running");
+				System.exit(-2);
+			} 
+			catch (UnknownHostException e) {
 				e.printStackTrace();
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -355,6 +406,8 @@ public class P2PClient {
 		}
 		private void saveRfcToDisk() throws IOException {
 			String response = null;
+			boolean isReadTitle = false;
+			String receivedRfcTitle="";
 			while ((response = downloaderIn.readLine()) != null && !response.contains(END_MESSAGE)) {
 				if (response.length() != 0) System.out.println(response);
 				if(response.contains("DATA BEGINS HERE"))
@@ -363,13 +416,21 @@ public class P2PClient {
 					while(!(response=downloaderIn.readLine()).contains("DATA ENDS HERE"))
 					{
 						System.out.println(response);
+						if(!isReadTitle&&response.contains("Title: "))
+						{
+							isReadTitle = true;
+							receivedRfcTitle = response.split("Title: ")[1];
+						}
 						sb.append(response+END);
 					}
 					FileWriter fw = new FileWriter(new File(rfcPath+"//RFC_"+rfcId+".txt"), false);
 					fw.write(sb.toString());
 					fw.close();
+					
 				}
 			}
+			System.out.println("");
+			myRfcList.put(rfcId, receivedRfcTitle);
 			addRfcs(SINGLE_RFC, rfcId);
 		}
 	}
