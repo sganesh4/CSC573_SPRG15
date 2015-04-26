@@ -43,7 +43,7 @@ public class GBNClient {
 			System.out.println("Error: Incorrect args list provided");
 			System.out
 					.println("Please invoke the module as: "
-							+ "SimpleFTPClient <IPv4 Server IP> <Server Port> <File Name> <Window Size> <MSS>");
+							+ "GBNClient <IPv4 Server IP> <Server Port> <File Name> <Window Size> <MSS>");
 			System.exit(1);
 		} else {
 			serverHostName = args[0];
@@ -170,7 +170,7 @@ public class GBNClient {
 															// server
 						byte[] receivedAckBytes = ackPacket.getData();
 						int receivedAckSeqNo = readPacketSequenceNumber(receivedAckBytes);
-						//System.out.println("ACK: "+receivedAckSeqNo);
+						System.out.println("ACK: "+receivedAckSeqNo);
 						acked = receivedAckSeqNo;
 						windowUsed = sentNotAcked - acked;
 						//if(sentNotAcked==acked)windowUsed = 0;
@@ -182,7 +182,13 @@ public class GBNClient {
 							DatagramPacket sendPacket = new DatagramPacket(endBytes,
 									endBytes.length, IPAddress, serverPort);
 							udpClientSocket.send(sendPacket);
-							end = true;
+							sentNotAcked++;
+							sentPackets.add(endBytes);
+						}
+						if(receivedAckSeqNo==lastSequenceNumber+1)
+						{
+							//Bug fix wait for ack on last packet
+							end=true;
 						}
 						
 					} catch (SocketTimeoutException e) {
@@ -192,6 +198,7 @@ public class GBNClient {
 						System.out.println("Timeout on packet = " + (acked+1));
 						
 						for (int i = acked+1; i <= sentNotAcked; i++) {
+							System.out.println("Sending " + (i));
 							byte[] retransBytes = sentPackets.get(i);
 							DatagramPacket reTrans = new DatagramPacket(retransBytes,
 									retransBytes.length, IPAddress, serverPort);

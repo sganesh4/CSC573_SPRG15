@@ -24,7 +24,7 @@ public class GBNServer {
 			System.out.println("Error: Incorrect args list provided");
 			System.out
 					.println("Please invoke the module as: "
-							+ "TestSimpleFTPClient <port_number> <Local File Name> <Loss Probability [0, 1]>");
+							+ "GBNServer <port_number> <Local File Name> <Loss Probability [0, 1]>");
 			System.exit(1);
 		} else {
 			listenPort = Integer.parseInt(args[0]);
