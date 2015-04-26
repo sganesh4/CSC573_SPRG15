@@ -4,7 +4,11 @@ import java.nio.ByteBuffer;
 
 public class GBNPacket {
 	private int sequenceNumber;
-	private static int MSS = 40;
+	private static int MSS;
+	public static void setMSS(int mSS) {
+		MSS = mSS;
+	}
+
 	private byte[] data;
 	byte[] header;
 

@@ -1,25 +1,31 @@
 package com.csc573.sftp;
 
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.util.ArrayList;
+//import java.net.UnknownHostException;
 import java.util.Arrays;
 
 public class GBNServer {
-	private static int listenPort;
-	private static String fileName;
-	private static double lossProbability;
-	private static int receivedPacketCount = 0;
-	private static int MSS;
-	private static FileOutputStream fileOutputStream;
-	private static DatagramSocket udpServerSocket;
-	private static DatagramPacket receivedPacket;
-	private static int expectedSequenceNumber;
-	private static boolean end;
-	private static boolean isMSSKnown = false;
+	private  int listenPort;
+	private  String fileName;
+	private  double lossProbability;
+	//private  int packetLossCount = 0;
+	//private  int receivedPacketCount = 0;
+	private  int MSS;
+	private  FileOutputStream fileOutputStream;
+	private  DatagramSocket udpServerSocket;
+	private  DatagramPacket receivedPacket;
+	private  int expectedSequenceNumber;
+	private ArrayList<byte[]> receivedOutOfOrder = new ArrayList<byte[]>();
+	private  boolean end;
+	//private static boolean isMSSKnown = false;
+	//private int droppedPacketCount=0;
 
-	private static void initFields(String[] args) throws IOException {
+	private void initFields(String[] args) throws IOException {
 		if (args.length != 3) {
 			System.out.println("Error: Incorrect args list provided");
 			System.out
@@ -27,29 +33,43 @@ public class GBNServer {
 							+ "GBNServer <port_number> <Local File Name> <Loss Probability [0, 1]>");
 			System.exit(1);
 		} else {
-			listenPort = Integer.parseInt(args[0]);
-			fileName = args[1];
-			lossProbability = Double.parseDouble(args[2]);
-			//lossProbability = 0.5;
-			System.out.println("Listening for connection on port: "
-					+ listenPort + "\nData will be stored in: " + fileName
-					+ "\nLoss Probability: " + lossProbability);
-			fileOutputStream = new FileOutputStream(fileName, false);
-			udpServerSocket = null;
-			byte[] receivedBytes = new byte[2048];
-			receivedPacket = new DatagramPacket(receivedBytes,
-					receivedBytes.length);
-			expectedSequenceNumber = 0;
-			end = true;
-			udpServerSocket = new DatagramSocket(listenPort);
+			try {
+				listenPort = Integer.parseInt(args[0]);
+				fileName = args[1];
+				lossProbability = Double.parseDouble(args[2]);
+				//lossProbability = 0.5;
+				System.out.println("Listening for connection on port: "
+						+ listenPort + "\nData will be stored in: " + fileName
+						+ "\nLoss Probability: " + lossProbability);
+				fileOutputStream = new FileOutputStream(fileName, false);
+				udpServerSocket = null;
+				byte[] receivedBytes = new byte[2048];
+				receivedPacket = new DatagramPacket(receivedBytes,
+						receivedBytes.length);
+				expectedSequenceNumber = 0;
+				end = true;
+				udpServerSocket = new DatagramSocket(listenPort);
+			} catch (NumberFormatException e) {
+				System.out.println("One of the numerical arguments provided is not a valid number");
+				System.exit(-4);
+			}
+			catch (FileNotFoundException e2) {
+				System.out.println("Cannot find the specified file");
+				System.exit(-4);
+			}
 
 		}
 	}
 
-	public static void main(String[] args) {
-
-		try {
-			initFields(args);
+	public static void main(String[] args)throws IOException {
+		GBNServer gbnServer = new GBNServer();
+		gbnServer.initFields(args);
+		gbnServer.startReceiverSender();
+	}
+	private void startReceiverSender()
+	{
+try {
+			
 			while (end) {
 
 				udpServerSocket.receive(receivedPacket);
@@ -95,22 +115,23 @@ public class GBNServer {
 						udpServerSocket.send(ack);
 						expectedSequenceNumber++;
 					} else {
-						/*
-						 * if(expectedSequenceNumber!=receivedSequenceNumber) {
-						 * System.out.println("Error: Sequence number mismatch"
-						 * +
-						 * "\nExpected Sequence Number: "+expectedSequenceNumber
-						 * +
-						 * "\nReceived Sequence Number: "+receivedSequenceNumber
-						 * +"\nDropping the packet"); }else if (!checksumStatus)
+						
+						  if(expectedSequenceNumber!=receivedSequenceNumber) {
+							  //Selective arq
+							  
+						  }
+						 /*
+						 * else if (!checksumStatus)
 						 * { System.out.println("Error: Checksum mismatch"
 						 * +"\nDropping the packet"); }
 						 */
+						//droppedPacketCount++;
 						// Do Nothing!!
 					}
 				} else {
 					System.out.println("Packet loss, sequence number = "
 							+ receivedSequenceNumber);
+					//packetLossCount++;
 				}
 			}
 		} catch (IOException e) {
@@ -119,22 +140,24 @@ public class GBNServer {
 			try {
 				fileOutputStream.close();
 				udpServerSocket.close();
-				//System.out.println(receivedPacketCount);
+				
+				//System.out.println("Total number of packets received "
+					//	+ "(including retransmission): "+receivedPacketCount);
+				//System.out.println("Total number of packets lost: "+packetLossCount);
+				//System.out.println("Total number of packets dropped: "+droppedPacketCount);
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 
 		}
 	}
-
-	private static int getPacketChecksum(byte[] receivedPackBytes) {
+	private int getPacketChecksum(byte[] receivedPackBytes) {
 
 		return ((receivedPackBytes[4] << 8) & 0xFF00)
 				| (receivedPackBytes[5] & 0xFF);
 	}
 
-	private static boolean isChecksumOK(byte[] data, int checksum) {
+	private boolean isChecksumOK(byte[] data, int checksum) {
 
 		// Last packet case
 		byte[] dataBytes = new byte[MSS];
@@ -146,7 +169,7 @@ public class GBNServer {
 		return false;
 	}
 
-	private static int getPacketSequenceNumber(byte[] data) {
+	private int getPacketSequenceNumber(byte[] data) {
 		// The data is received in bytes. The First 4 bytes are the sequence
 		// number
 		// We can combine these 4 bytes using simple bit manipulation
@@ -155,7 +178,7 @@ public class GBNServer {
 				| ((data[2] << 8) & 0xFF00) | (data[3] & 0xFF);
 	}
 
-	private static byte[] getPacketData(byte[] packet) {
+	private byte[] getPacketData(byte[] packet) {
 
 		byte[] data = new byte[MSS];
 		System.arraycopy(packet, 8, data, 0, data.length);
@@ -163,14 +186,14 @@ public class GBNServer {
 		return trimZeros(data);
 	}
 
-	public static byte[] trimZeros(byte[] data) {
+	public byte[] trimZeros(byte[] data) {
 		int i = data.length - 1;
 		while (i >= 0 && data[i] == 0)
 			i--;
 		return Arrays.copyOf(data, i + 1);
 	}
 
-	private static int calculateChecksum(byte[] data) {
+	private int calculateChecksum(byte[] data) {
 		int sum = 0, tempData = 0;
 		for (int i = 0; i < data.length; i += 2) {
 			if (i == data.length - 1) {
@@ -189,7 +212,7 @@ public class GBNServer {
 		return sum;
 	}
 
-	private static boolean isAcceptPacket() {
+	private boolean isAcceptPacket() {
 		if (Math.random() > lossProbability) {
 			return true;
 		}
