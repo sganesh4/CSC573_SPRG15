@@ -33,7 +33,7 @@ public class GBNClient {
 											// last packet
 	private  int MSS; // MSS size
 	private  int windowSize; // window size at client side
-	private  final int RETRANS_TIMER = 100;
+	private  final int RETRANS_TIMER = 50;
 	//private  int sentPacketCount = 0;
 	//private  int retransmissionCount=0;
 	private  byte[] fileBytes;
@@ -219,7 +219,7 @@ public class GBNClient {
 						
 					} catch (SocketTimeoutException e) {
 						// retransmission logic send all packets
-						//System.out.println("Timeout on packet = " + (acked+1));
+						System.out.println("Timeout on packet = " + (acked+1));
 						synchronized (sentPackets) {
 							
 						for (int i = acked+1; i <= sentNotAcked; i++) {
